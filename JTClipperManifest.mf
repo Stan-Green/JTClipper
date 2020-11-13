@@ -1,0 +1,4 @@
+Manifest-Version: 1.2
+Main-Class: JTClipper
+Class-Path: commons-codec-1.4.jar
+
