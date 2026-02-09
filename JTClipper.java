@@ -45,38 +45,71 @@ When the same text is copied a second time, don't replace the contents on the ci
 Add the images to the type of capture.
 */
 
-import java.awt.*;
-import java.awt.event.*;
-import java.awt.datatransfer.*;
-import javax.swing.*;
-import java.io.*;
-import java.net.*;
-import java.util.*;
-import java.text.*;
+import java.awt.CheckboxMenuItem;
+import java.awt.Image;
+import java.awt.MenuItem;
+import java.awt.PopupMenu;
+import java.awt.SystemTray;
+import java.awt.Toolkit;
+import java.awt.TrayIcon;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InvalidClassException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.StreamCorruptedException;
+import java.io.UnsupportedEncodingException;
+import java.net.URL;
+import java.security.spec.AlgorithmParameterSpec;
+import java.security.spec.KeySpec;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Vector;
 
-import javax.crypto.*;
-import javax.crypto.spec.*;
-import java.security.spec.*;
-
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.PBEParameterSpec;
 //Image support
-import javax.imageio.*;
-import java.awt.image.*;
+import javax.imageio.ImageIO;
+import javax.swing.JOptionPane;
 
-import org.apache.commons.codec.digest.*;
+import org.apache.commons.codec.digest.DigestUtils;
 
 public class JTClipper implements MouseListener, ActionListener, ItemListener
 {
-	//Note: (Replaced with C++ on 5/30. This is no longer an issue.)
+	//Note: (Replaced with C++ on 5/30/2013. This is no longer an issue.)
 	//Java cannot monitor the clipboard for changes. This is was a design decision made by Sun.
 	//This forces us to use endless loop to check for available data. It is unknown if the
 	//data is new or the same data a the previous run. Therefore this code uses a "brute force"
 	//approach to solving this problem. In theory this could slow down the system, but I have 
-	//never seen a noticiable slowdown.  This does not seem to have a negative 
+	//never seen a noticeable slow down.  This does not seem to have a negative 
 	//impact on the system performance as most activity is in memory. 
-	//If vary large text is copied, this may cause a slight slowdown. This could also 
+	//If vary large text is copied, this may cause a slight slow down. This could also 
 	//cause an issue in the case of very low disk space as the memory is saved to the local 
 	//disk when data changes.
 	//If pasting to fast (i.e. less than half a second.) the conversion may not have taken place yet.
+	
+	//MS Excel make extensive use of the clipboard, even for things that it should be doing internally. 
+	//As of 12/26/2022, I cannot find how to "play nice" with Excel.
 
 private int iiPDStackSize = 30;
 private int iiPDImageStackSize = 30;
@@ -186,6 +219,7 @@ public void printLine(String asMsg)
 
 public static void main ( String[] asArgs )
 {
+	@SuppressWarnings("unused")
 	JTClipper loJTClipper = new JTClipper(asArgs);
 }
 
@@ -212,7 +246,14 @@ public JTClipper(String[] asArgs)
 		}
 		catch (IllegalStateException e)
 		{
-			Thread.sleep(100);
+			try
+			{
+				Thread.sleep(100);
+			}
+			catch (InterruptedException ie)
+			{
+				printLine(ie.getMessage());
+			}
 			lbSuccess = false;
 		}
 	}
@@ -360,6 +401,12 @@ private void runCC()
 			if(ibCapture)
 			{
 				ioTrans = ioClipboard.getContents(null);
+
+//				DataFlavor[] loTemp = ioClipboard.getAvailableDataFlavors();
+//				
+//				for (int i = 0; i < loTemp.length; i++) {
+//					  System.out.println(loTemp[i].getHumanPresentableName());
+//					}
 				
 				if(ibImages && ioTrans.isDataFlavorSupported(DataFlavor.imageFlavor))
 				{
@@ -864,6 +911,7 @@ public String setFileName(String asFileName)
 	return lsFileName;
 }
 
+@SuppressWarnings({ "rawtypes", "deprecation", "unchecked" })
 public void saveState()
 {
 	FileOutputStream loFileOutStream;
@@ -903,10 +951,11 @@ public void saveState()
 	}	
 }
 
+@SuppressWarnings("rawtypes")
 public void loadState()
 {
 	FileInputStream loFileInStream = null;
-	ObjectInputStream loObjectInStram = null;
+	ObjectInputStream loObjectInStream = null;
 	File loFile = null;
 	Vector ioContainer = new Vector(4);
 	
@@ -926,9 +975,9 @@ public void loadState()
 			return;
 		}
 		loFileInStream = new FileInputStream(isSaveFile);
-		loObjectInStram = new ObjectInputStream(loFileInStream);
-		ioContainer = (Vector)loObjectInStram.readObject();
-		loObjectInStram.close();
+		loObjectInStream = new ObjectInputStream(loFileInStream);
+		ioContainer = (Vector)loObjectInStream.readObject();
+		loObjectInStream.close();
 		ioPermCBVersions = (PDStack)ioContainer.elementAt(0);
 		ioCBVersions = (PDStack)ioContainer.elementAt(1);
 		ioEncrypted = (Boolean)ioContainer.elementAt(2);
@@ -943,7 +992,7 @@ public void loadState()
 		
 		try
 		{
-			loObjectInStram.close();
+			loObjectInStream.close();
 		}
 		catch(Exception e2) {}
 		
@@ -956,7 +1005,7 @@ public void loadState()
 		
 		try
 		{
-			loObjectInStram.close();
+			loObjectInStream.close();
 		}
 		catch(Exception e2) {}
 		
@@ -969,7 +1018,7 @@ public void loadState()
 		
 		try
 		{
-			loObjectInStram.close();
+			loObjectInStream.close();
 		}
 		catch(Exception e2) {}
 		
@@ -986,7 +1035,7 @@ public void loadState()
 		JOptionPane.showMessageDialog(null, "Saved file is invalid. This should be corrected on exit." , "Load Error", JOptionPane.ERROR_MESSAGE);
 		try
 		{
-			loObjectInStram.close();
+			loObjectInStream.close();
 		}
 		catch(Exception e2) {}
 		
@@ -1014,7 +1063,8 @@ public void loadState()
 	
 	iiPDStackSize = ioCBVersions.getMax();
 	iiMenuCount = ioCBVersions.getSize();
-	
+//SG If the save file is bigger than the max for this computer (i.e. I copied the file from another comptuer)
+//	The system goes wancky. Need to trim the ioCBVersions on read to match the max for this comptuer.	
 	if(ibDebug)
 	{
 		printLine("Max Size: " + iiPDStackSize);
@@ -1279,6 +1329,7 @@ private enum CBMenuItemNumber
 	}   
 }
 
+@SuppressWarnings("incomplete-switch")
 public void itemStateChanged(ItemEvent e)
 {
 	String lsMenuItem = null;
@@ -1673,6 +1724,7 @@ public void pushClipData(String asInput, boolean abPerm)
 	}
 }
 
+@SuppressWarnings("incomplete-switch")
 public void actionPerformed(ActionEvent e)
 {
 	if(e.getActionCommand() != null)
@@ -2018,6 +2070,7 @@ private void clearItem(int aiItem)
 	iiMenuCount--;
 }
 
+@SuppressWarnings("unused")
 private void clearItem()
 {
 	int liItem = 0;
